@@ -65,6 +65,10 @@
 #include <mediautils/BatteryNotifier.h>
 #include <private/android_filesystem_config.h>
 
+#ifdef SRS_PROCESSING
+#include "postpro_patch.h"
+#endif
+
 // ----------------------------------------------------------------------------
 
 // Note: the following macro is used for extremely verbose logging message.  In
@@ -1106,6 +1110,13 @@ status_t AudioFlinger::setParameters(audio_io_handle_t ioHandle, const String8& 
         Mutex::Autolock _l(mLock);
         // result will remain NO_INIT if no audio device is present
         status_t final_result = NO_INIT;
+#ifdef SRS_PROCESSING
+        POSTPRO_PATCH_PARAMS_SET(keyValuePairs);
+        for (size_t i = 0; i < mPlaybackThreads.size(); i++) {
+            PlaybackThread *thread = mPlaybackThreads.valueAt(i).get();
+            thread->setPostPro();
+        }
+#endif
         {
             AutoMutex lock(mHardwareLock);
             mHardwareStatus = AUDIO_HW_SET_PARAMETER;
@@ -1190,6 +1201,9 @@ String8 AudioFlinger::getParameters(audio_io_handle_t ioHandle, const String8& k
 
     if (ioHandle == AUDIO_IO_HANDLE_NONE) {
         String8 out_s8;
+#ifdef SRS_PROCESSING
+        POSTPRO_PATCH_PARAMS_GET(keys, out_s8);
+#endif
 
         for (size_t i = 0; i < mAudioHwDevs.size(); i++) {
             char *s;
@@ -1414,7 +1428,11 @@ sp<AudioFlinger::PlaybackThread> AudioFlinger::getEffectThread_l(audio_session_t
     return thread;
 }
 
-
+void AudioFlinger::PlaybackThread::setPostPro() {
+    Mutex::Autolock _l(mLock);
+    if (mType == OFFLOAD)
+        broadcast_l();
+}
 
 // ----------------------------------------------------------------------------
 
